@@ -1,524 +1,551 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Users, Settings, Plus, Trash2, Home, List, ChevronRight, RotateCcw, CheckCircle2, XCircle, Eye } from 'lucide-react';
-
-const INITIAL_THEMES = [
-  "無人島に持っていきたいもの（1: 絶望的 〜 100: 完璧）",
-  "強い動物（1: 最弱 〜 100: 最強）",
-  "人気の旅行先（1: 行きたくない 〜 100: 絶対行きたい）",
-  "怖いもの（1: 全く怖くない 〜 100: 気絶するほど怖い）",
-  "テンションが上がる瞬間（1: 無表情 〜 100: 狂喜乱舞）",
-  "言われて嬉しい言葉（1: ふーん 〜 100: 泣いて喜ぶ）",
-  "欲しい超能力（1: 地味すぎる 〜 100: 世界を救える）",
-  "コンビニでよく買うもの（1: 誰も買わない 〜 100: 毎日買う）",
-  "理想の休日の過ごし方（1: 苦痛 〜 100: 最高）",
-  "お弁当に入っていたら嬉しいおかず（1: 残す 〜 100: 最初に食べる）",
-  "貰って嬉しいプレゼント（1: 困惑 〜 100: 一生大事にする）",
-  "遅刻の言い訳の苦しさ（1: 納得 〜 100: 絶対嘘）",
-  "カッコいいと思う職業（1: 地味 〜 100: 超クール）",
-  "なりたい歴史上の人物（1: 絶対嫌 〜 100: 憧れ）",
-  "部屋にあるとテンションが上がるもの（1: 邪魔 〜 100: 宝物）",
-  "好きな寿司ネタ（1: 食べられない 〜 100: 100貫いける）",
-  "好きなテレビ番組のジャンル（1: すぐ消す 〜 100: 録画して見る）",
-  "好きな匂い（1: 悪臭 〜 100: 深呼吸したくなる）",
-  "好きな音（1: 騒音 〜 100: 癒やされる）",
-  "好きな言葉（1: 意味不明 〜 100: 座右の銘）"
-];
-
-export default function App() {
-  const [view, setView] = useState('home'); // home, themes, setup, confirm, play, result
-  const [themes, setThemes] = useState(INITIAL_THEMES);
-  const [players, setPlayers] = useState([
-    { id: '1', name: 'プレイヤー1', cards: [] },
-    { id: '2', name: 'プレイヤー2', cards: [] },
-    { id: '3', name: 'プレイヤー3', cards: [] }
-  ]);
-  const [cardCount, setCardCount] = useState(1);
-  const [currentTheme, setCurrentTheme] = useState('');
-  const [playedCards, setPlayedCards] = useState([]);
-  const [fails, setFails] = useState(0);
-  
-  // セットアップ用ステート
-  const [newPlayerName, setNewPlayerName] = useState('');
-  const [newTheme, setNewTheme] = useState('');
-  
-  // 確認画面用ステート
-  const [currentConfirmPlayer, setCurrentConfirmPlayer] = useState(0);
-  const [showCards, setShowCards] = useState(false);
-
-  // エラーメッセージ用
-  const [errorMessage, setErrorMessage] = useState('');
-
-  const scrollRef = useRef(null);
-
-  // エラー表示ヘルパー
-  const showError = (msg) => {
-    setErrorMessage(msg);
-    setTimeout(() => setErrorMessage(''), 3000);
-  };
-
-  // プレイヤー管理
-  const addPlayer = () => {
-    if (!newPlayerName.trim()) {
-      showError('プレイヤー名を入力してください');
-      return;
-    }
-    const newId = Date.now().toString();
-    setPlayers([...players, { id: newId, name: newPlayerName.trim(), cards: [] }]);
-    setNewPlayerName('');
-  };
-
-  const removePlayer = (id) => {
-    if (players.length <= 2) {
-      showError('最低2人のプレイヤーが必要です');
-      return;
-    }
-    setPlayers(players.filter(p => p.id !== id));
-  };
-
-  // お題管理
-  const addTheme = () => {
-    if (!newTheme.trim()) {
-      showError('お題を入力してください');
-      return;
-    }
-    setThemes([newTheme.trim(), ...themes]);
-    setNewTheme('');
-  };
-
-  const removeTheme = (index) => {
-    const newThemes = [...themes];
-    newThemes.splice(index, 1);
-    setThemes(newThemes);
-  };
-
-  // ゲーム進行
-  const startGame = () => {
-    if (players.length < 2) {
-      showError('プレイヤーは2人以上必要です');
-      return;
-    }
-    if (themes.length === 0) {
-      showError('お題がありません。追加してください');
-      return;
-    }
-
-    // 1〜100のデッキを作成してシャッフル
-    let deck = Array.from({ length: 100 }, (_, i) => i + 1);
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-
-    // カードを配る
-    const newPlayers = players.map(p => {
-      const dealt = deck.splice(0, cardCount).sort((a, b) => a - b);
-      return { ...p, cards: dealt };
-    });
-
-    setPlayers(newPlayers);
-    
-    // お題をランダムに決定
-    const randomTheme = themes[Math.floor(Math.random() * themes.length)];
-    setCurrentTheme(randomTheme);
-    
-    setPlayedCards([]);
-    setFails(0);
-    setCurrentConfirmPlayer(0);
-    setShowCards(false);
-    setView('confirm');
-  };
-
-  // カードを場に出す
-  const playCard = (playerId) => {
-    const playerIndex = players.findIndex(p => p.id === playerId);
-    if (playerIndex === -1) return;
-    
-    const player = players[playerIndex];
-    if (player.cards.length === 0) return;
-    
-    // 一番小さいカードを自動的に出す
-    const cardToPlay = player.cards[0];
-    const newCards = player.cards.slice(1);
-    
-    const newPlayers = [...players];
-    newPlayers[playerIndex] = { ...player, cards: newCards };
-    setPlayers(newPlayers);
-    
-    const lastPlayed = playedCards.length > 0 ? playedCards[playedCards.length - 1].card : 0;
-    const isFail = cardToPlay < lastPlayed;
-    
-    if (isFail) {
-      setFails(f => f + 1);
-    }
-    
-    const newPlayedCards = [...playedCards, { player: player.name, card: cardToPlay, isFail }];
-    setPlayedCards(newPlayedCards);
-    
-    // 自動スクロール
-    setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }
-    }, 100);
-
-    // 終了判定
-    const totalRemaining = newPlayers.reduce((sum, p) => sum + p.cards.length, 0);
-    if (totalRemaining === 0) {
-      setTimeout(() => {
-        setView('result');
-      }, 1000);
-    }
-  };
-
-  // === UIレンダリング ===
-
-  const renderHome = () => (
-    <div className="flex flex-col items-center justify-center space-y-6 mt-12">
-      <div className="bg-neutral-800 p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border border-neutral-700">
-        <h2 className="text-3xl font-black text-amber-400 mb-2 tracking-widest">ITO CLONE</h2>
-        <p className="text-neutral-400 mb-8 text-sm">価値観を合わせて数字を並べよう！</p>
-        
-        <button 
-          onClick={() => setView('setup')}
-          className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-4 px-6 rounded-xl font-bold shadow-lg transition-transform active:scale-95 mb-4"
-        >
-          <Play size={24} />
-          ゲームを始める
-        </button>
-        
-        <button 
-          onClick={() => setView('themes')}
-          className="w-full flex items-center justify-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white py-4 px-6 rounded-xl font-bold shadow-lg transition-transform active:scale-95"
-        >
-          <List size={24} />
-          お題一覧・編集
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderThemes = () => (
-    <div className="flex flex-col space-y-4 pb-20">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xl font-bold text-amber-400 flex items-center gap-2">
-          <List size={24} /> お題一覧
-        </h2>
-        <button onClick={() => setView('home')} className="p-2 bg-neutral-800 rounded-lg active:scale-95">
-          <Home size={20} />
-        </button>
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        <input 
-          type="text" 
-          value={newTheme}
-          onChange={(e) => setNewTheme(e.target.value)}
-          placeholder="新しいお題を入力..."
-          className="flex-1 bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 focus:outline-none focus:border-amber-400"
-          onKeyDown={(e) => e.key === 'Enter' && addTheme()}
-        />
-        <button 
-          onClick={addTheme}
-          className="bg-emerald-600 px-4 rounded-lg font-bold flex items-center justify-center active:scale-95 shadow-md"
-        >
-          <Plus size={24} />
-        </button>
-      </div>
-
-      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-        {themes.map((theme, idx) => (
-          <div key={idx} className="flex items-center justify-between bg-neutral-800 p-4 rounded-lg border border-neutral-700">
-            <span className="text-sm font-medium">{theme}</span>
-            <button 
-              onClick={() => removeTheme(idx)}
-              className="text-red-400 hover:text-red-300 p-2 active:scale-95"
-            >
-              <Trash2 size={20} />
-            </button>
-          </div>
-        ))}
-        {themes.length === 0 && <p className="text-center text-neutral-500 py-8">お題がありません</p>}
-      </div>
-    </div>
-  );
-
-  const renderSetup = () => (
-    <div className="flex flex-col space-y-6 pb-20">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-amber-400 flex items-center gap-2">
-          <Settings size={24} /> プレイ設定
-        </h2>
-        <button onClick={() => setView('home')} className="p-2 bg-neutral-800 rounded-lg active:scale-95">
-          <Home size={20} />
-        </button>
-      </div>
-
-      {/* プレイヤー設定 */}
-      <div className="bg-neutral-800 p-5 rounded-xl border border-neutral-700 space-y-4">
-        <h3 className="font-bold flex items-center gap-2 text-neutral-300">
-          <Users size={18} /> プレイヤー ({players.length}人)
-        </h3>
-        <div className="flex gap-2">
-          <input 
-            type="text" 
-            value={newPlayerName}
-            onChange={(e) => setNewPlayerName(e.target.value)}
-            placeholder="プレイヤー名"
-            className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-amber-400"
-            onKeyDown={(e) => e.key === 'Enter' && addPlayer()}
-          />
-          <button 
-            onClick={addPlayer}
-            className="bg-indigo-600 px-4 rounded-lg font-bold flex items-center justify-center active:scale-95"
-          >
-            追加
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2 pt-2">
-          {players.map(p => (
-            <div key={p.id} className="flex items-center bg-neutral-700 pl-3 pr-1 py-1 rounded-full text-sm">
-              <span>{p.name}</span>
-              <button onClick={() => removePlayer(p.id)} className="ml-2 p-1 text-red-400 active:scale-95">
-                <XCircle size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* カード枚数設定 */}
-      <div className="bg-neutral-800 p-5 rounded-xl border border-neutral-700 space-y-4">
-        <h3 className="font-bold text-neutral-300">1人あたりのカード枚数</h3>
-        <div className="flex gap-4">
-          {[1, 2, 3].map(num => (
-            <button
-              key={num}
-              onClick={() => setCardCount(num)}
-              className={`flex-1 py-3 rounded-lg font-bold border-2 transition-all ${
-                cardCount === num 
-                  ? 'bg-amber-500 border-amber-500 text-neutral-900 shadow-lg scale-105' 
-                  : 'bg-neutral-900 border-neutral-700 text-neutral-400'
-              }`}
-            >
-              {num} 枚
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button 
-        onClick={startGame}
-        className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-95 flex items-center justify-center gap-2 mt-4"
-      >
-        <Play size={24} /> ゲームスタート
-      </button>
-    </div>
-  );
-
-  const renderConfirm = () => {
-    const player = players[currentConfirmPlayer];
-    
-    return (
-      <div className="flex flex-col items-center justify-center h-[70vh] space-y-8 px-4">
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-black text-amber-400">{player.name}</h2>
-          <p className="text-lg text-neutral-300">にスマホを渡してください</p>
-        </div>
-        
-        <div className="bg-red-900/30 border border-red-500/50 p-4 rounded-lg text-center w-full max-w-xs">
-          <p className="text-red-300 font-bold text-sm">⚠️ 他の人は画面を見ないでください ⚠️</p>
-        </div>
-        
-        {!showCards ? (
-          <button 
-            onClick={() => setShowCards(true)}
-            className="w-full max-w-xs bg-indigo-600 py-5 rounded-2xl text-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-3 mt-8"
-          >
-            <Eye size={28} /> 自分のカードを見る
-          </button>
-        ) : (
-          <div className="flex flex-col items-center space-y-8 w-full animate-in fade-in zoom-in duration-300">
-            <div className="flex gap-4 justify-center flex-wrap">
-              {player.cards.map(card => (
-                <div key={card} className="w-24 h-36 bg-white text-neutral-900 rounded-xl shadow-2xl flex items-center justify-center text-5xl font-black border-4 border-neutral-200 relative">
-                  <div className="absolute top-2 left-2 text-xs font-bold text-neutral-400">{card}</div>
-                  {card}
-                  <div className="absolute bottom-2 right-2 text-xs font-bold text-neutral-400 rotate-180">{card}</div>
-                </div>
-              ))}
-            </div>
-            
-            <button 
-              onClick={() => {
-                setShowCards(false);
-                if (currentConfirmPlayer + 1 < players.length) {
-                  setCurrentConfirmPlayer(currentConfirmPlayer + 1);
-                } else {
-                  setView('play');
-                }
-              }}
-              className="w-full max-w-xs bg-emerald-600 py-4 rounded-2xl text-lg font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2"
-            >
-              <CheckCircle2 size={24} /> 確認完了 (隠す)
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderPlay = () => (
-    <div className="flex flex-col h-full space-y-6">
-      {/* お題表示 */}
-      <div className="bg-amber-400 text-neutral-900 p-5 rounded-2xl shadow-lg border-b-4 border-amber-600 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-2 opacity-20"><List size={48} /></div>
-        <h3 className="text-sm font-black mb-1 opacity-70 tracking-widest">現在のお題</h3>
-        <p className="text-xl font-bold leading-tight">{currentTheme}</p>
-      </div>
-
-      {/* 場に出たカード */}
-      <div className="bg-neutral-800 rounded-2xl border border-neutral-700 p-4 shadow-inner flex flex-col h-48">
-        <h3 className="text-xs text-neutral-400 font-bold mb-2">場に出たカード（小さい順に出す）</h3>
-        <div 
-          ref={scrollRef}
-          className="flex-1 overflow-x-auto flex gap-3 items-center pb-2 custom-scrollbar"
-        >
-          {playedCards.length === 0 ? (
-            <p className="text-neutral-500 w-full text-center font-bold">まだカードが出ていません</p>
-          ) : (
-            playedCards.map((pc, idx) => (
-              <div key={idx} className="flex flex-col items-center shrink-0 animate-in slide-in-from-right-4">
-                <div className={`w-16 h-24 rounded-lg flex items-center justify-center text-2xl font-black shadow-md border-2 relative
-                  ${pc.isFail ? 'bg-red-600 border-red-400 text-white' : 'bg-white border-neutral-200 text-neutral-900'}
-                `}>
-                  {pc.card}
-                  {pc.isFail && <div className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5 shadow-md"><XCircle size={16}/></div>}
-                </div>
-                <span className="text-xs text-neutral-300 mt-2 truncate w-20 text-center bg-neutral-900/50 rounded px-1 py-0.5">{pc.player}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* プレイヤーアクション */}
-      <div className="flex-1">
-        <p className="text-center text-sm text-neutral-400 mb-3 font-bold">全員で話し合って、カードを出そう</p>
-        <div className="grid grid-cols-2 gap-3">
-          {players.map(p => {
-            const isEmpty = p.cards.length === 0;
-            return (
-              <button
-                key={p.id}
-                onClick={() => playCard(p.id)}
-                disabled={isEmpty}
-                className={`p-4 rounded-xl flex flex-col items-center justify-center transition-all active:scale-95 border-b-4
-                  ${isEmpty 
-                    ? 'bg-neutral-800 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed' 
-                    : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-800 text-white shadow-lg'}
-                `}
-              >
-                <span className="font-bold truncate w-full text-center text-lg">{p.name}</span>
-                <span className={`text-sm mt-1 px-2 py-0.5 rounded-full ${isEmpty ? 'bg-neutral-900' : 'bg-indigo-800'}`}>
-                  残り: {p.cards.length}枚
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderResult = () => (
-    <div className="flex flex-col items-center justify-center space-y-8 mt-12 animate-in slide-in-from-bottom-8">
-      <div className="text-center space-y-4">
-        <h2 className="text-4xl font-black text-amber-400 mb-2">ゲーム終了！</h2>
-        
-        {fails === 0 ? (
-          <div className="bg-emerald-600/20 border border-emerald-500 p-6 rounded-2xl">
-            <h3 className="text-3xl font-black text-emerald-400 mb-2">🎉 パーフェクト 🎉</h3>
-            <p className="text-emerald-200">価値観が完全に一致しました！</p>
-          </div>
-        ) : (
-          <div className="bg-red-900/30 border border-red-500 p-6 rounded-2xl">
-            <h3 className="text-2xl font-bold text-red-400 mb-2">順番のミス: {fails} 回</h3>
-            <p className="text-red-200">もう少し話し合いが必要かも？</p>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-neutral-800 p-5 rounded-xl w-full max-w-sm border border-neutral-700">
-        <h4 className="text-sm text-neutral-400 font-bold mb-3 text-center">今回のお題</h4>
-        <p className="text-center font-bold text-lg text-white mb-4">{currentTheme}</p>
-        
-        <div className="flex flex-wrap gap-2 justify-center">
-           {playedCards.map((pc, idx) => (
-             <span key={idx} className={`px-2 py-1 rounded text-sm font-bold ${pc.isFail ? 'bg-red-600/50 text-red-200' : 'bg-neutral-700 text-neutral-200'}`}>
-               {pc.card} ({pc.player})
-             </span>
-           ))}
-        </div>
-      </div>
-
-      <div className="w-full max-w-sm space-y-3">
-        <button 
-          onClick={startGame}
-          className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2"
-        >
-          <RotateCcw size={20} /> 同じ設定でもう一度遊ぶ
-        </button>
-        <button 
-          onClick={() => setView('home')}
-          className="w-full bg-neutral-700 text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2"
-        >
-          <Home size={20} /> ホームに戻る
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-neutral-900 text-white font-sans selection:bg-amber-500/30">
-      <header className="p-4 bg-neutral-950/80 backdrop-blur-sm sticky top-0 z-10 border-b border-neutral-800">
-        <div className="max-w-md mx-auto flex justify-center">
-          <h1 className="text-xl font-black text-amber-500 tracking-widest cursor-pointer" onClick={() => setView('home')}>
-            ITO CLONE
-          </h1>
-        </div>
-      </header>
-
-      <main className="p-4 max-w-md mx-auto min-h-[calc(100vh-80px)]">
-        {view === 'home' && renderHome()}
-        {view === 'themes' && renderThemes()}
-        {view === 'setup' && renderSetup()}
-        {view === 'confirm' && renderConfirm()}
-        {view === 'play' && renderPlay()}
-        {view === 'result' && renderResult()}
-      </main>
-      
-      {/* Toast Error Message */}
-      {errorMessage && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-50 font-bold flex items-center gap-2 animate-in slide-in-from-bottom-4">
-          <XCircle size={20} />
-          {errorMessage}
-        </div>
-      )}
-
-      {/* スクロールバー非表示用のインラインスタイル */}
-      <style dangerouslySetInnerHTML={{__html: `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ITO CLONE</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* カスタムスクロールバー */
         .custom-scrollbar::-webkit-scrollbar {
-          height: 6px;
+            height: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: #262626;
-          border-radius: 10px;
+            background: #262626;
+            border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #525252;
-          border-radius: 10px;
+            background: #525252;
+            border-radius: 10px;
         }
-      `}} />
-    </div>
-  );
-}
+
+        /* アニメーション用クラス */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInBottom {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        .animate-slide-in-right {
+            animation: slideInRight 0.3s ease-out forwards;
+        }
+        .animate-slide-in-bottom {
+            animation: slideInBottom 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-neutral-900 text-white font-sans selection:bg-amber-500/30 min-h-screen">
+    
+    <div id="app"></div>
+
+    <script>
+        const INITIAL_THEMES = [
+            "無人島に持っていきたいもの（1: 絶望的 〜 100: 完璧）",
+            "強い動物（1: 最弱 〜 100: 最強）",
+            "人気の旅行先（1: 行きたくない 〜 100: 絶対行きたい）",
+            "怖いもの（1: 全く怖くない 〜 100: 気絶するほど怖い）",
+            "テンションが上がる瞬間（1: 無表情 〜 100: 狂喜乱舞）",
+            "言われて嬉しい言葉（1: ふーん 〜 100: 泣いて喜ぶ）",
+            "欲しい超能力（1: 地味すぎる 〜 100: 世界を救える）",
+            "コンビニでよく買うもの（1: 誰も買わない 〜 100: 毎日買う）",
+            "理想の休日の過ごし方（1: 苦痛 〜 100: 最高）",
+            "お弁当に入っていたら嬉しいおかず（1: 残す 〜 100: 最初に食べる）",
+            "貰って嬉しいプレゼント（1: 困惑 〜 100: 一生大事にする）",
+            "遅刻の言い訳の苦しさ（1: 納得 〜 100: 絶対嘘）",
+            "カッコいいと思う職業（1: 地味 〜 100: 超クール）",
+            "なりたい歴史上の人物（1: 絶対嫌 〜 100: 憧れ）",
+            "部屋にあるとテンションが上がるもの（1: 邪魔 〜 100: 宝物）",
+            "好きな寿司ネタ（1: 食べられない 〜 100: 100貫いける）",
+            "好きなテレビ番組のジャンル（1: すぐ消す 〜 100: 録画して見る）",
+            "好きな匂い（1: 悪臭 〜 100: 深呼吸したくなる）",
+            "好きな音（1: 騒音 〜 100: 癒やされる）",
+            "好きな言葉（1: 意味不明 〜 100: 座右の銘）"
+        ];
+
+        // グローバルステート
+        let state = {
+            view: 'home', // home, themes, setup, confirm, play, result
+            themes: [...INITIAL_THEMES],
+            players: [
+                { id: '1', name: 'プレイヤー1', cards: [] },
+                { id: '2', name: 'プレイヤー2', cards: [] },
+                { id: '3', name: 'プレイヤー3', cards: [] }
+            ],
+            cardCount: 1,
+            currentTheme: '',
+            playedCards: [],
+            fails: 0,
+            
+            newPlayerName: '',
+            newTheme: '',
+            
+            currentConfirmPlayer: 0,
+            showCards: false,
+            errorMessage: ''
+        };
+
+        // --- ステート操作関数 ---
+
+        function setView(view) {
+            state.view = view;
+            render();
+        }
+
+        function setCardCount(count) {
+            state.cardCount = count;
+            render();
+        }
+
+        function showError(msg) {
+            state.errorMessage = msg;
+            render();
+            setTimeout(() => {
+                state.errorMessage = '';
+                render();
+            }, 3000);
+        }
+
+        function addPlayer() {
+            if (!state.newPlayerName.trim()) {
+                showError('プレイヤー名を入力してください');
+                return;
+            }
+            const newId = Date.now().toString();
+            state.players.push({ id: newId, name: state.newPlayerName.trim(), cards: [] });
+            state.newPlayerName = '';
+            render();
+        }
+
+        function removePlayer(id) {
+            if (state.players.length <= 2) {
+                showError('最低2人のプレイヤーが必要です');
+                return;
+            }
+            state.players = state.players.filter(p => p.id !== id);
+            render();
+        }
+
+        function addTheme() {
+            if (!state.newTheme.trim()) {
+                showError('お題を入力してください');
+                return;
+            }
+            state.themes.unshift(state.newTheme.trim());
+            state.newTheme = '';
+            render();
+        }
+
+        function removeTheme(index) {
+            state.themes.splice(index, 1);
+            render();
+        }
+
+        function startGame() {
+            if (state.players.length < 2) {
+                showError('プレイヤーは2人以上必要です');
+                return;
+            }
+            if (state.themes.length === 0) {
+                showError('お題がありません。追加してください');
+                return;
+            }
+
+            // デッキ作成とシャッフル
+            let deck = Array.from({ length: 100 }, (_, i) => i + 1);
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            // カード配布
+            state.players = state.players.map(p => {
+                const dealt = deck.splice(0, state.cardCount).sort((a, b) => a - b);
+                return { ...p, cards: dealt };
+            });
+
+            // お題決定
+            state.currentTheme = state.themes[Math.floor(Math.random() * state.themes.length)];
+            
+            state.playedCards = [];
+            state.fails = 0;
+            state.currentConfirmPlayer = 0;
+            state.showCards = false;
+            setView('confirm');
+        }
+
+        function showConfirmCards() {
+            state.showCards = true;
+            render();
+        }
+
+        function finishConfirm() {
+            state.showCards = false;
+            if (state.currentConfirmPlayer + 1 < state.players.length) {
+                state.currentConfirmPlayer++;
+                render();
+            } else {
+                setView('play');
+            }
+        }
+
+        function playCard(playerId) {
+            const playerIndex = state.players.findIndex(p => p.id === playerId);
+            if (playerIndex === -1) return;
+            
+            const player = state.players[playerIndex];
+            if (player.cards.length === 0) return;
+            
+            const cardToPlay = player.cards[0];
+            const newCards = player.cards.slice(1);
+            
+            state.players[playerIndex].cards = newCards;
+            
+            const lastPlayed = state.playedCards.length > 0 ? state.playedCards[state.playedCards.length - 1].card : 0;
+            const isFail = cardToPlay < lastPlayed;
+            
+            if (isFail) {
+                state.fails++;
+            }
+            
+            state.playedCards.push({ player: player.name, card: cardToPlay, isFail });
+            render();
+            
+            // 自動スクロール
+            setTimeout(() => {
+                const scrollEl = document.getElementById('played-cards-scroll');
+                if (scrollEl) {
+                    scrollEl.scrollLeft = scrollEl.scrollWidth;
+                }
+            }, 100);
+
+            // 終了判定
+            const totalRemaining = state.players.reduce((sum, p) => sum + p.cards.length, 0);
+            if (totalRemaining === 0) {
+                setTimeout(() => {
+                    setView('result');
+                }, 1000);
+            }
+        }
+
+        // --- レンダリング関数 ---
+
+        function renderHome() {
+            return `
+            <div class="flex flex-col items-center justify-center space-y-6 mt-12 animate-fade-in">
+                <div class="bg-neutral-800 p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border border-neutral-700">
+                    <h2 class="text-3xl font-black text-amber-400 mb-2 tracking-widest">ITO CLONE</h2>
+                    <p class="text-neutral-400 mb-8 text-sm">価値観を合わせて数字を並べよう！</p>
+                    
+                    <button onclick="setView('setup')" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-4 px-6 rounded-xl font-bold shadow-lg transition-transform active:scale-95 mb-4">
+                        <i data-lucide="play" class="w-6 h-6"></i> ゲームを始める
+                    </button>
+                    
+                    <button onclick="setView('themes')" class="w-full flex items-center justify-center gap-2 bg-neutral-700 hover:bg-neutral-600 text-white py-4 px-6 rounded-xl font-bold shadow-lg transition-transform active:scale-95">
+                        <i data-lucide="list" class="w-6 h-6"></i> お題一覧・編集
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        function renderThemes() {
+            return `
+            <div class="flex flex-col space-y-4 pb-20 animate-fade-in">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
+                        <i data-lucide="list" class="w-6 h-6"></i> お題一覧
+                    </h2>
+                    <button onclick="setView('home')" class="p-2 bg-neutral-800 rounded-lg active:scale-95 hover:bg-neutral-700">
+                        <i data-lucide="home" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="flex gap-2 mb-4">
+                    <input 
+                        type="text" 
+                        id="newThemeInput"
+                        value="${state.newTheme}"
+                        oninput="state.newTheme = this.value"
+                        onkeydown="if(event.key === 'Enter') addTheme()"
+                        placeholder="新しいお題を入力..."
+                        class="flex-1 bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 focus:outline-none focus:border-amber-400"
+                    />
+                    <button onclick="addTheme()" class="bg-emerald-600 px-4 rounded-lg font-bold flex items-center justify-center active:scale-95 shadow-md hover:bg-emerald-500">
+                        <i data-lucide="plus" class="w-6 h-6"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    ${state.themes.length === 0 ? '<p class="text-center text-neutral-500 py-8">お題がありません</p>' : ''}
+                    ${state.themes.map((theme, idx) => `
+                        <div class="flex items-center justify-between bg-neutral-800 p-4 rounded-lg border border-neutral-700">
+                            <span class="text-sm font-medium">${theme}</span>
+                            <button onclick="removeTheme(${idx})" class="text-red-400 hover:text-red-300 p-2 active:scale-95">
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        function renderSetup() {
+            return `
+            <div class="flex flex-col space-y-6 pb-20 animate-fade-in">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
+                        <i data-lucide="settings" class="w-6 h-6"></i> プレイ設定
+                    </h2>
+                    <button onclick="setView('home')" class="p-2 bg-neutral-800 rounded-lg active:scale-95 hover:bg-neutral-700">
+                        <i data-lucide="home" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <!-- プレイヤー設定 -->
+                <div class="bg-neutral-800 p-5 rounded-xl border border-neutral-700 space-y-4">
+                    <h3 class="font-bold flex items-center gap-2 text-neutral-300">
+                        <i data-lucide="users" class="w-5 h-5"></i> プレイヤー (${state.players.length}人)
+                    </h3>
+                    <div class="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="newPlayerNameInput"
+                            value="${state.newPlayerName}"
+                            oninput="state.newPlayerName = this.value"
+                            onkeydown="if(event.key === 'Enter') addPlayer()"
+                            placeholder="プレイヤー名"
+                            class="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-amber-400"
+                        />
+                        <button onclick="addPlayer()" class="bg-indigo-600 px-4 rounded-lg font-bold flex items-center justify-center active:scale-95 hover:bg-indigo-500">
+                            追加
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 pt-2">
+                        ${state.players.map(p => `
+                            <div class="flex items-center bg-neutral-700 pl-3 pr-1 py-1 rounded-full text-sm">
+                                <span>${p.name}</span>
+                                <button onclick="removePlayer('${p.id}')" class="ml-1 p-1 text-red-400 hover:text-red-300 active:scale-95">
+                                    <i data-lucide="x-circle" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- カード枚数設定 -->
+                <div class="bg-neutral-800 p-5 rounded-xl border border-neutral-700 space-y-4">
+                    <h3 class="font-bold text-neutral-300">1人あたりのカード枚数</h3>
+                    <div class="flex gap-4">
+                        ${[1, 2, 3].map(num => `
+                            <button onclick="setCardCount(${num})" class="flex-1 py-3 rounded-lg font-bold border-2 transition-all ${state.cardCount === num ? 'bg-amber-500 border-amber-500 text-neutral-900 shadow-lg scale-105' : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-500'}">
+                                ${num} 枚
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <button onclick="startGame()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg active:scale-95 flex items-center justify-center gap-2 mt-4">
+                    <i data-lucide="play" class="w-6 h-6"></i> ゲームスタート
+                </button>
+            </div>`;
+        }
+
+        function renderConfirm() {
+            const player = state.players[state.currentConfirmPlayer];
+            if (!player) return '';
+
+            return `
+            <div class="flex flex-col items-center justify-center h-[70vh] space-y-8 px-4 animate-fade-in">
+                <div class="text-center space-y-2">
+                    <h2 class="text-3xl font-black text-amber-400">${player.name}</h2>
+                    <p class="text-lg text-neutral-300">にスマホを渡してください</p>
+                </div>
+                
+                <div class="bg-red-900/30 border border-red-500/50 p-4 rounded-lg text-center w-full max-w-xs">
+                    <p class="text-red-300 font-bold text-sm">⚠️ 他の人は画面を見ないでください ⚠️</p>
+                </div>
+                
+                ${!state.showCards ? `
+                    <button onclick="showConfirmCards()" class="w-full max-w-xs bg-indigo-600 hover:bg-indigo-500 py-5 rounded-2xl text-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-3 mt-8">
+                        <i data-lucide="eye" class="w-7 h-7"></i> 自分のカードを見る
+                    </button>
+                ` : `
+                    <div class="flex flex-col items-center space-y-8 w-full animate-fade-in">
+                        <div class="flex gap-4 justify-center flex-wrap">
+                            ${player.cards.map(card => `
+                                <div class="w-24 h-36 bg-white text-neutral-900 rounded-xl shadow-2xl flex items-center justify-center text-5xl font-black border-4 border-neutral-200 relative">
+                                    <div class="absolute top-2 left-2 text-xs font-bold text-neutral-400">${card}</div>
+                                    ${card}
+                                    <div class="absolute bottom-2 right-2 text-xs font-bold text-neutral-400 rotate-180">${card}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <button onclick="finishConfirm()" class="w-full max-w-xs bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl text-lg font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                            <i data-lucide="check-circle" class="w-6 h-6"></i> 確認完了 (隠す)
+                        </button>
+                    </div>
+                `}
+            </div>`;
+        }
+
+        function renderPlay() {
+            return `
+            <div class="flex flex-col h-full space-y-6 animate-fade-in">
+                <!-- お題表示 -->
+                <div class="bg-amber-400 text-neutral-900 p-5 rounded-2xl shadow-lg border-b-4 border-amber-600 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-2 opacity-20"><i data-lucide="list" class="w-16 h-16"></i></div>
+                    <h3 class="text-sm font-black mb-1 opacity-70 tracking-widest">現在のお題</h3>
+                    <p class="text-xl font-bold leading-tight relative z-10">${state.currentTheme}</p>
+                </div>
+
+                <!-- 場に出たカード -->
+                <div class="bg-neutral-800 rounded-2xl border border-neutral-700 p-4 shadow-inner flex flex-col h-48">
+                    <h3 class="text-xs text-neutral-400 font-bold mb-2">場に出たカード（小さい順に出す）</h3>
+                    <div id="played-cards-scroll" class="flex-1 overflow-x-auto flex gap-3 items-center pb-2 custom-scrollbar">
+                        ${state.playedCards.length === 0 ? `
+                            <p class="text-neutral-500 w-full text-center font-bold">まだカードが出ていません</p>
+                        ` : state.playedCards.map(pc => `
+                            <div class="flex flex-col items-center shrink-0 animate-slide-in-right">
+                                <div class="w-16 h-24 rounded-lg flex items-center justify-center text-2xl font-black shadow-md border-2 relative ${pc.isFail ? 'bg-red-600 border-red-400 text-white' : 'bg-white border-neutral-200 text-neutral-900'}">
+                                    ${pc.card}
+                                    ${pc.isFail ? `<div class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5 shadow-md"><i data-lucide="x-circle" class="w-4 h-4"></i></div>` : ''}
+                                </div>
+                                <span class="text-xs text-neutral-300 mt-2 truncate w-20 text-center bg-neutral-900/50 rounded px-1 py-0.5">${pc.player}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- プレイヤーアクション -->
+                <div class="flex-1">
+                    <p class="text-center text-sm text-neutral-400 mb-3 font-bold">全員で話し合って、カードを出そう</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${state.players.map(p => {
+                            const isEmpty = p.cards.length === 0;
+                            return `
+                                <button onclick="playCard('${p.id}')" ${isEmpty ? 'disabled' : ''} class="p-4 rounded-xl flex flex-col items-center justify-center transition-all active:scale-95 border-b-4 ${isEmpty ? 'bg-neutral-800 border-neutral-900 text-neutral-600 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-800 text-white shadow-lg'}">
+                                    <span class="font-bold truncate w-full text-center text-lg">${p.name}</span>
+                                    <span class="text-sm mt-1 px-2 py-0.5 rounded-full ${isEmpty ? 'bg-neutral-900' : 'bg-indigo-800'}">残り: ${p.cards.length}枚</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderResult() {
+            return `
+            <div class="flex flex-col items-center justify-center space-y-8 mt-12 animate-slide-in-bottom">
+                <div class="text-center space-y-4">
+                    <h2 class="text-4xl font-black text-amber-400 mb-2">ゲーム終了！</h2>
+                    
+                    ${state.fails === 0 ? `
+                        <div class="bg-emerald-600/20 border border-emerald-500 p-6 rounded-2xl">
+                            <h3 class="text-3xl font-black text-emerald-400 mb-2">🎉 パーフェクト 🎉</h3>
+                            <p class="text-emerald-200">価値観が完全に一致しました！</p>
+                        </div>
+                    ` : `
+                        <div class="bg-red-900/30 border border-red-500 p-6 rounded-2xl">
+                            <h3 class="text-2xl font-bold text-red-400 mb-2">順番のミス: ${state.fails} 回</h3>
+                            <p class="text-red-200">もう少し話し合いが必要かも？</p>
+                        </div>
+                    `}
+                </div>
+
+                <div class="bg-neutral-800 p-5 rounded-xl w-full max-w-sm border border-neutral-700">
+                    <h4 class="text-sm text-neutral-400 font-bold mb-3 text-center">今回のお題</h4>
+                    <p class="text-center font-bold text-lg text-white mb-4">${state.currentTheme}</p>
+                    
+                    <div class="flex flex-wrap gap-2 justify-center">
+                        ${state.playedCards.map(pc => `
+                            <span class="px-2 py-1 rounded text-sm font-bold ${pc.isFail ? 'bg-red-600/50 text-red-200' : 'bg-neutral-700 text-neutral-200'}">
+                                ${pc.card} (${pc.player})
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="w-full max-w-sm space-y-3">
+                    <button onclick="startGame()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                        <i data-lucide="rotate-ccw" class="w-5 h-5"></i> 同じ設定でもう一度遊ぶ
+                    </button>
+                    <button onclick="setView('home')" class="w-full bg-neutral-700 hover:bg-neutral-600 text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                        <i data-lucide="home" class="w-5 h-5"></i> ホームに戻る
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        function renderErrorToast() {
+            if (!state.errorMessage) return '';
+            return `
+            <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-50 font-bold flex items-center gap-2 animate-slide-in-bottom">
+                <i data-lucide="x-circle" class="w-5 h-5"></i>
+                ${state.errorMessage}
+            </div>`;
+        }
+
+        // --- メイン描画処理 ---
+        function render() {
+            // 再描画時にフォーカスが外れないように、現在フォーカスされている要素のIDを記録
+            const activeId = document.activeElement ? document.activeElement.id : null;
+
+            let html = `
+                <header class="p-4 bg-neutral-950/80 backdrop-blur-sm sticky top-0 z-10 border-b border-neutral-800">
+                    <div class="max-w-md mx-auto flex justify-center">
+                        <h1 class="text-xl font-black text-amber-500 tracking-widest cursor-pointer hover:text-amber-400 transition-colors" onclick="setView('home')">
+                            ITO CLONE
+                        </h1>
+                    </div>
+                </header>
+                <main class="p-4 max-w-md mx-auto min-h-[calc(100vh-80px)]">
+            `;
+
+            switch (state.view) {
+                case 'home': html += renderHome(); break;
+                case 'themes': html += renderThemes(); break;
+                case 'setup': html += renderSetup(); break;
+                case 'confirm': html += renderConfirm(); break;
+                case 'play': html += renderPlay(); break;
+                case 'result': html += renderResult(); break;
+            }
+
+            html += `</main>${renderErrorToast()}`;
+            
+            document.getElementById('app').innerHTML = html;
+
+            // Lucideアイコンの初期化（再描画のたびに実行）
+            lucide.createIcons();
+
+            // フォーカスの復元
+            if (activeId) {
+                const el = document.getElementById(activeId);
+                if (el) {
+                    el.focus();
+                    // カーソル位置を末尾へ
+                    const val = el.value;
+                    el.value = '';
+                    el.value = val;
+                }
+            }
+        }
+
+        // 初回描画
+        render();
+
+    </script>
+</body>
+</html>
